@@ -1,0 +1,7 @@
+#!/bin/sh
+
+netif_pre_up() {
+	# needed? :
+	ip addr flush dev $interface
+}
+
