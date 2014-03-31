@@ -1,0 +1,7 @@
+template="bridge-vde"
+br_interface="vbr0"
+ipaddr="192.168.1.180/24"
+slaves="netif.eth1 "
+
+vde_tap="vtap0"
+

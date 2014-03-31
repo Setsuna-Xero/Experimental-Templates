@@ -1,0 +1,149 @@
+#!/bi
+
+netif_create() {
+
+	if [ -z "${br_interace}" ]; then
+		echo "using service name $interface as bridge interface name"
+		br_interface="${interface}"
+	fi
+	## Set up Phy Bridge to attach VDE too
+	ip link add name ${br_interface} type bridge
+	echo "bridge"
+
+	## Enable set forward delay, and enable forwarding
+	   echo  0 > /sys/devices/virtual/net/${br_interface}/bridge/forward_delay 
+	for f in /proc/sys/net/bridge/bridge-nf-*; do echo 0 > $f; done
+	    /sbin/sysctl net.ipv4.conf.${br_interface}.forwarding=${forwarding} >/dev/null 2>&1
+	    /sbin/sysctl net.ipv6.conf.${br_interface}.forwarding=${forwarding} >/dev/null 2>&1
+
+	## Turn off STP, as it is handled by VDE
+	   echo 0 > /sys/devices/virtual/net/${br_interface}/bridge/stp_state 
+	
+
+	## Set up VDE_Switch
+	
+	   if [ -n "$vde_mode" ]; then
+	   	vde_mod_arg="--mode $vde_mode "
+	   else
+	   	vde_mod_arg="--mode 777 "
+	   fi
+
+	   if [ -n "$vde_group" ]; then
+	   	vde_group_arg="--group $vde_group "
+	   else
+	   	vde_group_arg="--group kvm "
+		vde_group="kvm"
+	   fi
+
+
+	   if [ -n "$vde_tap" ]; then
+	   ip tuntap add dev ${vde_tap} mode tap group ${vde_group}
+	   ip link set ${vde_tap} promisc on
+	   ip link set ${vde_tap} up
+	   ip link set dev ${vde_tap} master ${br_interface}
+	   	vde_tap_arg="--tap $vde_tap "
+	   else
+	   	echo "No tap interface supplied, creating one in the form of \${br_interface}-tap"
+		vde_tap="${br_interface}-tap"
+	   	ip tuntap add dev ${vde_tap} mode tap group ${vde_group}
+	   	ip link set ${vde_tap} promisc on
+	   	ip link set ${vde_tap} up
+	   	ip link set dev ${vde_tap} master ${br_interface}
+	   	vde_tap_arg="--tap $vde_tap"
+	   fi
+
+	   if [ -n "$vde_sock" ]; then
+	   	vde_sock_arg="--sock $vde_sock "
+	   else
+	   	vde_sock_arg="--sock /var/tmp/vde.${br_interface}.ctl "
+	   fi
+
+	   if [ -n "$vde_pidfile" ]; then
+	   	vde_pidfile_arg="--pidfile $vde_pid "
+	   else
+	   	vde_pidfile_arg="--pidfile /var/tmp/vde.${br_interface}.pid "
+	   fi
+
+	   if [ -n "$vde_rcfile" ]; then
+	   	vde_rcfile_arg="--rcfile $vde_rcfile "
+	   else
+	   	vde_rcfile_arg=""
+	   fi
+
+	   if [ -n "$vde_mgmt" ]; then
+	   	vde_mgmt_arg="--mgmt $vde_mgmt "
+	   else
+	   	vde_mgmt_arg="--mgmt /var/tmp/vde.${br_interface}.mgmt"
+	   fi
+
+	   if [ -n "$vde_hub" ]; then
+	   	vde_hub_arg="--hub " 
+	   else
+	   	vde_hub_arg=""
+	   fi
+
+	   vde_args=" $vde_pidfile_arg $vde_hub_arg $vde_rcfile_arg $vde_mgmt_arg $vde_mod_arg $vde_group_arg $vde_tap_arg $vde_sock_arg -daemon"
+	   echo $vde_args
+	   vde_switch $vde_args
+
+
+}
+
+netif_destroy() {
+
+	   if [ -n "$vde_mgmt" ]; then
+	   	vde_mgmt_arg="-s $vde_mgmt "
+	   else
+	   	vde_mgmt_arg="-s /var/tmp/vde.${br_interface}.mgmt"
+	   fi
+	if [ -n "$vde_pidfile" ]; then
+		vde_pid=`cat $vde_pidfile`
+	else
+		vde_pid=`cat /var/tmp/vde.${br_interface}.pid`
+	fi
+	echo "vde_mgmt: $vde_mgmt_arg"
+	echo "vde_pid: $vde_pid"
+	vdecmd_args="$vde_mgmt_arg shutdown"
+	vdecmd $vdecmd_args || kill -s TERM $vde_pid || echo "failed to kill vde_switch running on PID $vde_pid"
+
+}
+
+netif_pre_up() {
+	local slave
+	local bcast
+	if [ -n "$slaves" ]; then
+		for slave in ${slaves//netif./}; do
+			ip addr flush dev ${slave}
+			ip link set dev ${slave} master ${br_interface}
+		done
+	fi	
+	for ipnm in $ipaddr $ipaddrs; do
+	    if [ -n "$(if_ipv4 $ipnm)" ]; then
+		bcast="broadcast $(get_option "$ipnm" broadcast +)"
+	    else
+		bcast=""
+	    fi
+	    ip addr add $(get_ipnm_part "$ipnm") $bcast dev $br_interface || die "Couldn't add $ipnm to $br_interface"
+	done
+
+	for ipnm6 in $ipaddr6 $ipaddrs6; do
+	    ip -6 addr add $(get_ipnm_part "$ipnm6") $bcast dev $br_interface || die "Couldn't add $ipnm6 to $br_interface"
+	done
+
+}
+
+netif_pre_down() {
+
+
+	   ip link set dev ${vde_tap} nomaster
+	   ip link delete dev ${vde_tap}
+
+	local slave
+	local bcast
+	if [ -n "$slaves" ]; then
+		for slave in ${slaves//netif./}; do
+			ip link set dev ${slave} nomaster
+		done
+	fi	
+	ip link delete dev ${br_interface}
+}
