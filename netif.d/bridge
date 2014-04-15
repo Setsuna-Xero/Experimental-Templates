@@ -2,72 +2,72 @@
 
 netif_create() {
 	ip link add name $interface type bridge
-        if [ "$fd" -ge "0" ]; then
-	   echo $fd > /sys/devices/virtual/net/${interface}/bridge/forward_delay 
-	   if [ "$debug" -ge "2" ]; then
-		   echo "Setting forwarding delay to: ${fd}ms"
-		   fi
+	if [ "$fd" -ge "0" ]; then
+		echo $fd > /sys/devices/virtual/net/${interface}/bridge/forward_delay 
+		if [ "$debug" -ge "2" ]; then
+			echo "Setting forwarding delay to: ${fd}ms"
+		fi
 	else
-	   echo  0 > /sys/devices/virtual/net/${interface}/bridge/forward_delay 
-	   if [ "$debug" -ge "2" ]; then
-		   echo "Setting forwarding delay to: 0ms[Default]"
-		   fi
+		echo  0 > /sys/devices/virtual/net/${interface}/bridge/forward_delay 
+		if [ "$debug" -ge "2" ]; then
+			echo "Setting forwarding delay to: 0ms[Default]"
+		fi
 	fi 
 
 	if [ "$forwarding" -eq "1" ]; then
 		for f in /proc/sys/net/bridge/bridge-nf-*; do echo 0 > $f; done
-	    /sbin/sysctl net.ipv4.conf.${interface}.forwarding=1 >/dev/null 2>&1
-	    /sbin/sysctl net.ipv6.conf.${interface}.forwarding=1 >/dev/null 2>&1
-	   if [ "$debug" -ge "2" ]; then
-		   echo "Enabling IP forwarding"
-		   fi
+		/sbin/sysctl net.ipv4.conf.${interface}.forwarding=1 >/dev/null 2>&1
+		/sbin/sysctl net.ipv6.conf.${interface}.forwarding=1 >/dev/null 2>&1
+		if [ "$debug" -ge "2" ]; then
+			echo "Enabling IP forwarding"
+		fi
 	elif [ "$forwarding" -eq "0" ]; then
 		if [ "$debug" -ge "2" ]; then
 			echo "IP Forwarding not enabled"
-			fi
+		fi
 	else
 		for f in /proc/sys/net/bridge/bridge-nf-*; do echo 0 > $f; done
-	    /sbin/sysctl net.ipv4.conf.${interface}.forwarding=1 >/dev/null 2>&1
-	    /sbin/sysctl net.ipv6.conf.${interface}.forwarding=1 >/dev/null 2>&1
+		/sbin/sysctl net.ipv4.conf.${interface}.forwarding=1 >/dev/null 2>&1
+		/sbin/sysctl net.ipv6.conf.${interface}.forwarding=1 >/dev/null 2>&1
 		if [ "$debug" -ge "2" ]; then
 			echo "Enabling IP forwarding[Default]"
-			fi
+		fi
 	fi 
 
-        if [ -n "$mac_addr" ]; then
-            echo 'mac_addr is depricated and will be removed. Please use "macaddr"'
-        if [ -n "$macaddr" ]; then
+	if [ -n "$mac_addr" ]; then
+		echo 'mac_addr is depricated and will be removed. Please use "macaddr"'
+		if [ -n "$macaddr" ]; then
 			echo "Warning, \$macaddr is set. Using \$macaddr value $macaddr"
-        else
-            macaddr=$mac_addr
-	    echo "Using \$mac_addr value $mac_addr for \$macaddr"
-        fi
-		elif [ -n "$macaddr" ]; then
-			if [ "$debug" -ge "2" ]; then
-				echo "Setting MAC address to: $macaddr[Default]"
-				fi
 		else
-			if [ "debug" -ge "2" ]; then
-				echo "Using default MAC address"
-				fi
+			macaddr=$mac_addr
+			echo "Using \$mac_addr value $mac_addr for \$macaddr"
 		fi
+	elif [ -n "$macaddr" ]; then
+		if [ "$debug" -ge "2" ]; then
+			echo "Setting MAC address to: $macaddr[Default]"
+		fi
+	else
+		if [ "debug" -ge "2" ]; then
+			echo "Using default MAC address"
+		fi
+	fi
 
-        if [ "$stp" -eq 1 ]; then
-			echo 1 > /sys/devices/virtual/net/${interface}/bridge/stp_state
-			if [ "$debug" -ge "2" ]; then
-				echo "Enabling STP"
-				fi
-		elif [ "$stp" -eq 0 ]
-	   			echo 0 > /sys/devices/virtual/net/${interface}/bridge/stp_state
-	   		if [ "$debug" -ge "2" ]; then
-				echo "Disabling STP"
-				fi
-		else
-			echo 0 > /sys/devices/virtual/net/${interface}/bridge/stp_state 
-			if [ "$debug" -ge "2" ]; then
-				echo "Disabling STP[Default]"
-				fi
+	if [ "$stp" -eq 1 ]; then
+		echo 1 > /sys/devices/virtual/net/${interface}/bridge/stp_state
+		if [ "$debug" -ge "2" ]; then
+			echo "Enabling STP"
 		fi
+	elif [ "$stp" -eq 0 ]
+		echo 0 > /sys/devices/virtual/net/${interface}/bridge/stp_state
+		if [ "$debug" -ge "2" ]; then
+			echo "Disabling STP"
+		fi
+	else
+		echo 0 > /sys/devices/virtual/net/${interface}/bridge/stp_state 
+		if [ "$debug" -ge "2" ]; then
+			echo "Disabling STP[Default]"
+		fi
+	fi
 
 }
 
@@ -79,7 +79,7 @@ netif_destroy() {
 			ip link set dev ${slave} nomaster
 			if [ "$debug" -ge "2" ]; then
 				echo "Freeing Dev ${slave} from master"
-				fi
+			fi
 		done
 	fi	
 	ip link delete dev ${interface}
@@ -94,30 +94,30 @@ netif_pre_up() {
 			ip link set dev ${slave} master ${interface}
 			if [ "$debug" -ge "2" ]; then
 				echo "Setting Dev ${slave} master to Dev ${interface}"
-				fi
+			fi
 		done
 	else
 		if [ "$debug" -ge "2" ]; then
 			echo "No Slaves in Bridge!"
-			fi
+		fi
 	fi	
 	for ipnm in $ipaddr $ipaddrs; do
-	    if [ -n "$(if_ipv4 $ipnm)" ]; then
-		bcast="broadcast $(get_option "$ipnm" broadcast +)"
-	    else
-		bcast=""
-	    fi
-	    ip addr add $(get_ipnm_part "$ipnm") $bcast dev $interface || die "Couldn't add $ipnm to $interface"
+		if [ -n "$(if_ipv4 $ipnm)" ]; then
+			bcast="broadcast $(get_option "$ipnm" broadcast +)"
+		else
+			bcast=""
+		fi
+		ip addr add $(get_ipnm_part "$ipnm") $bcast dev $interface || die "Couldn't add $ipnm to $interface"
 		if [ "$debug" -ge "2" ]; then
 			echo "Setting Dev ${interface} IP to: ${ipnm}"
-			fi
+		fi
 	done
 
 	for ipnm6 in $ipaddr6 $ipaddrs6; do
-	    ip -6 addr add $(get_ipnm_part "$ipnm6") $bcast dev $interface || die "Couldn't add $ipnm6 to $interface"
+		ip -6 addr add $(get_ipnm_part "$ipnm6") $bcast dev $interface || die "Couldn't add $ipnm6 to $interface"
 		if ["$debug" -ge "2" ]; then
 			echo "Setting Dev ${interface} IPv6 to: ${ipnm6}"
-			fi
+		fi
 	done
 
 
