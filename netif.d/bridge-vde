@@ -2,15 +2,85 @@
 
 netif_create() {
 
+	# Check to see if interface is already in use
 	if [ -z "${br_interace}" ]; then
+		iface_test="$(ip link | grep ${interface} | awk '{ print $2 }')"
+		if [ "${iface_test//:/}" -eq "${interface}" ]; then
+			die "Interface name in use"
+		fi
 		if [ "$debug" -ge "2" ]; then
-			echo "using service name $interface as bridge interface name"
+			echo "using service name ${interface} as bridge interface name"
 		fi
 		br_interface="${interface}"
 		if [ "$debug" -ge "2" ]; then
 			echo "Setting br_interface to ${interface}"
 		fi
+	else
+		iface_test="$(ip link | grep ${br_interface} | awk '{ print $2 }')"
+		if [ "${iface_test//:/}" -eq "${br_interface}" ]; then
+			die "Interface name in use"
+		fi
+
 	fi
+
+
+	if [ -n "$vde_pidfile" ]; then
+		# Check if PID exists
+		if [ -e "$vde_pidfile" ]; then
+			if [ "$(ps -p $vde_pidfile -o comm | grep -v "COMMAND")" -eq "vde_switch" ]; then
+				# If it exists, and ps says another VDE is using it, die
+				die "PID File in use by VDE_SWITCH"
+
+			elif [ -z "$(ps -p $vde_pidfile -o comm | grep -v "COMMAND")" ]; then
+				# If the returned output is null, nothing is using that pid anymore
+				rm $vde_pidfile
+				vde_pidfile_arg="--pidfile $vde_pidfile "
+
+			elif [ "$(ps -p $vde_pidfile -o comm | grep -v "COMMAND")" -ne "vde_switch" ]; then
+				# Something else is using this PID file
+				$PID_proc="$($vde_pidfile -o comm | grep -v "COMMAND")"
+				die "PID File in use by another process: $PID_proc"
+			fi
+		else
+			# New PID file
+			vde_pidfile_arg="--pidfile $vde_pidfile "
+		fi
+	else
+		# $vde_pidfile is null
+		# Default 
+		vde_pidfile_arg="--pidfile /var/tmp/vde.${br_interface}.pid "
+	fi
+
+	if [ -n "$vde_sock" ]; then
+		# Check if PID exists
+		if [ -e "$vde_sock" ]; then
+			$vde_sock_pid="$(lsof -Ua | grep $PWD | grep vde_switc | awk '{print $2}' | uniq)"
+			$vde_pid="$(ps -p $vde_pidfile -o comm | grep -v "COMMAND")" 
+
+			if [ "$vde_sock_pid"  -eq "vde_pid" ]; then
+				# If it exists, and ps and lsof agree on PID, we're already running
+				die "SOCKET in use by VDE_SWITCH"
+
+			elif [ "$vde_sock_pid"  -ne "vde_pid" ]; then
+				# If it exists, and ps and lsof disagree  on PID
+				# Someone else is using the socket
+				$PID_proc="$($vde_sock_pid -o comm | grep -v "COMMAND")"
+				die "SOCKET in use by another process: $PID_proc"
+
+			elif [ -z "vde_sock_pid" ]; then
+				# Abandoned socket, probaly killed
+				# New PIDSOCKET
+				rm -rf $vde_sock
+				vde_sock_arg="--sock $vde_sock "
+			fi
+		else
+			# New PID file
+			vde_sock_arg="--sock $vde_sock "
+		fi
+	else
+		vde_sock_arg="--sock /var/tmp/vde.${br_interface}.ctl "
+
+	
 	## Set up Phy Bridge to attach VDE too
 	ip link add name ${br_interface} type bridge
 
@@ -72,22 +142,12 @@ netif_create() {
 		vde_tap_arg="--tap $vde_tap"
 	fi
 
-	if [ -n "$vde_sock" ]; then
-		vde_sock_arg="--sock $vde_sock "
-	else
-		vde_sock_arg="--sock /var/tmp/vde.${br_interface}.ctl "
-	fi
 	if [ "$debug" -ge "2" ]; then
 		echo "vde socket set to: ${vde_sock_arg}"
 	fi
 
-	if [ -n "$vde_pidfile" ]; then
-		vde_pidfile_arg="--pidfile $vde_pid "
-	else
-		vde_pidfile_arg="--pidfile /var/tmp/vde.${br_interface}.pid "
-	fi
 	if [ "$debug" -ge "2" ]; then
-		echo "vde pidfil set to: ${vde_pidfile_arg}"
+		echo "vde pidfile set to: ${vde_pidfile_arg}"
 	fi
 
 	if [ -n "$vde_rcfile" ]; then
