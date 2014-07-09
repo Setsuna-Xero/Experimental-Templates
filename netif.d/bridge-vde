@@ -38,7 +38,7 @@ netif_create() {
 
 			elif [ "$(ps -p $vde_pidfile -o comm | grep -v "COMMAND")" -ne "vde_switch" ]; then
 				# Something else is using this PID file
-				$PID_proc="$($vde_pidfile -o comm | grep -v "COMMAND")"
+				PID_proc="$($vde_pidfile -o comm | grep -v "COMMAND")"
 				die "PID File in use by another process: $PID_proc"
 			fi
 		else
@@ -54,8 +54,8 @@ netif_create() {
 	if [ -n "$vde_sock" ]; then
 		# Check if PID exists
 		if [ -e "$vde_sock" ]; then
-			$vde_sock_pid="$(lsof -Ua | grep $PWD | grep vde_switc | awk '{print $2}' | uniq)"
-			$vde_pid="$(ps -p $vde_pidfile -o comm | grep -v "COMMAND")" 
+			vde_sock_pid="$(lsof -Ua | grep $PWD | grep vde_switc | awk '{print $2}' | uniq)"
+			vde_pid="$(ps -p $vde_pidfile -o comm | grep -v "COMMAND")" 
 
 			if [ "$vde_sock_pid"  -eq "vde_pid" ]; then
 				# If it exists, and ps and lsof agree on PID, we're already running
@@ -64,21 +64,22 @@ netif_create() {
 			elif [ "$vde_sock_pid"  -ne "vde_pid" ]; then
 				# If it exists, and ps and lsof disagree  on PID
 				# Someone else is using the socket
-				$PID_proc="$($vde_sock_pid -o comm | grep -v "COMMAND")"
+				PID_proc="$($vde_sock_pid -o comm | grep -v "COMMAND")"
 				die "SOCKET in use by another process: $PID_proc"
 
 			elif [ -z "vde_sock_pid" ]; then
 				# Abandoned socket, probaly killed
-				# New PIDSOCKET
-				rm -rf $vde_sock
+				# New Socket
+				rm -rf "$vde_sock"
 				vde_sock_arg="--sock $vde_sock "
 			fi
 		else
-			# New PID file
+			# New Socket
 			vde_sock_arg="--sock $vde_sock "
 		fi
 	else
 		vde_sock_arg="--sock /var/tmp/vde.${br_interface}.ctl "
+	fi
 
 	
 	## Set up Phy Bridge to attach VDE too
@@ -158,7 +159,7 @@ netif_create() {
 	fi
 	if [ "$debug" -ge "2" ]; then
 		echo "vde rcfile set to: ${vde_rcfile}"
-
+	fi
 		if [ -n "$vde_mgmt" ]; then
 			vde_mgmt_arg="--mgmt $vde_mgmt "
 		else
