@@ -1,11 +1,15 @@
 #!/bin/sh
 
+if [ -z "$debug" ]; then
+	debug=0
+fi
+
 netif_create() {
 
 	# Check to see if interface is already in use
 	if [ -z "${br_interace}" ]; then
 		iface_test="$(ip link | grep ${interface} | awk '{ print $2 }')"
-		if [ "${iface_test//:/}" -eq "${interface}" ]; then
+		if [ "${iface_test//:/}" = "${interface}" ]; then
 			die "Interface name in use"
 		fi
 		if [ "$debug" -ge "2" ]; then
@@ -17,7 +21,7 @@ netif_create() {
 		fi
 	else
 		iface_test="$(ip link | grep ${br_interface} | awk '{ print $2 }')"
-		if [ "${iface_test//:/}" -eq "${br_interface}" ]; then
+		if [ "${iface_test//:/}" = "${br_interface}" ]; then
 			die "Interface name in use"
 		fi
 
