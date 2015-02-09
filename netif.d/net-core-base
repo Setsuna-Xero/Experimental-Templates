@@ -1,0 +1,696 @@
+#===============================================================================
+#
+#          FILE:  net-core-base
+# 
+#         USAGE:  ./net-core-base 
+# 
+#   DESCRIPTION:  Core Network Base Functions and globals
+# 
+#       OPTIONS:  ---
+#  REQUIREMENTS:  ---
+#          BUGS:  ---
+#         NOTES:  ---
+#        AUTHOR:  Setsuna-Xero (), Glenn@Coriolis-Storm.com
+#       COMPANY:  
+#       VERSION:  0.1
+#       CREATED:  02/02/2015 03:30:59 PM PST
+#      REVISION:  1
+#===============================================================================
+
+
+# Global Varibles ==============================================================
+
+net_temp_dir="/var/tmp/"
+
+if [ -z "debug" ]; then
+	debug="0"
+fi
+
+# End Global Variables =========================================================
+
+#===  FUNCTION  ================================================================
+#          NAME:  check_iface
+#   DESCRIPTION:  Check for Interfaces name collision
+#    PARAMETERS:  iface
+#       RETURNS:  Bool
+#===============================================================================
+function check_iface ()
+{
+
+
+	if [ "$#" -ne "1" ]; then
+		die "check_iface() missing parameters [Useage: iface ]"
+	fi
+	local iface="$1"
+	
+	iface_test="$(ip link |awk -v i=\"$awk_test:\"  '$2 == i {print substr($2, 0, length($2)-1)}')"
+	if [ -z "${iface_test}" ]; then
+		return true
+	else
+		die "Interface name: ${iface} already in use"
+	fi
+
+}    # ----------  end of function check_bridge_if  ----------
+
+
+
+#===  FUNCTION  ================================================================
+#          NAME:  check_set_pid_file
+#   DESCRIPTION:  Checks for existance of pid file, then sets location
+#    PARAMETERS:  c_pid iface pid_service 
+#       RETURNS:  Argument String
+#===============================================================================
+function check_set_pid_file ()
+{
+
+local usage='[Usage: check_set_pid_file c_pid iface pid_service]'
+
+	if [ "$#" -ne "3" ]; then
+		die "check_set_pid_file: Insufficient arguments. ${useage}"
+	fi
+	local c_pid="$1"
+	local iface="$2"
+
+	case $3 in
+		"vde")
+			local pid_service="vde_switch"
+			;;
+
+		"slirp")
+			local pid_service="slirpvde"
+			;;
+
+		*)
+			 die "check_set_pid_file: Invalid PID Service"
+			;;
+
+		esac    # --- end of case ---
+		local debug="$4"
+
+		# Check if PID exists
+		if [ -e "${c_pid}" ]; then
+			if [ "$(ps -ho cmd ${c_pid} | awk '{print $1}')" -eq "${pid_service}" ]; then
+				# If it exists, and ps says another pid_service is using it, die
+				die "PID File in use by ${pid_service}"
+
+			elif [ -z "$(ps -h ${c_pid} )" ]; then
+				# If the returned output is null, nothing is using that pid anymore
+				rm ${c_pid}
+				pidfile_arg="--pidfile ${c_pid} "
+
+			elif [ "$(ps -ho cmd ${c_pid} | awk '{print $1}')" -ne "${pid_service}" ]; then
+				# Something else is using this PID file
+				PID_proc="$(ps -ho cmd ${c_pid} | awk '{print $1}')"
+				die "PID File in use by another process: $PID_proc"
+			fi
+		else
+			# New PID file
+			pidfile_arg="--pidfile ${c_pid} "
+		fi
+
+		echo ${pidfile_arg}
+	}    # ----------  end of function check_pid_file  ----------
+
+
+	#===  FUNCTION  ================================================================
+	#          NAME:  check_set_sock
+	#   DESCRIPTION:  Checks and sets Socket and Managment dir
+	#    PARAMETERS:  c_sock iface sock_service 
+	#       RETURNS:  argument string
+	#===============================================================================
+
+
+	function check_set_sock ()
+	{
+	local useage="Useage: check_set_sock -c socket -i interface -s service[vde,vde_mgmt,slirp]"
+	local c_sock='1'
+	local iface='1'
+	local sock_service_init='1'
+while getsops ":c:i:s" Option
+do
+ local rec_arg=3
+ local rec_count=0
+case $Option in
+"c")
+	if [ "$c_sock" -ne '1' ]; then
+	c_sock="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "check_set_sock: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+	
+;;
+
+"i")
+	if [ "${iface}" -ne '1' ]; then
+	iface="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "check_set_sock: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"s")
+	if [[ "${sock_service_init}" -ne '1' ]]; then
+	sock_service_init="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "check_set_sock: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+*)
+	die "check_set_sock: Invalid option: ${Option}\n ${usage}"
+;;
+
+esac    # --- end of case ---
+done
+shift $((OPTIND-1))
+
+		if [ "${rec_count}" -ne "${rec_arg}"  ]; then
+			die "check_set_sock: Insufficient arguments. ${useage}" 
+		fi
+
+		case ${sock_service_init} in
+			"vde")
+				local sock_service="vde_switch"
+				local c_type="socket"
+				local c_arg="sock"
+				;;
+
+			"vde_mgmt")
+				local sock_service="vde_switch"
+				local c_type="Managment Socket"
+				local c_arg="mgmt"
+				;;
+
+			"slirp")
+				local sock_service="slirpvde"
+				local c_type="socket"
+				local c_arg="sock"
+				;;
+
+			*)
+				die "check_set_sock: Invalid argument: sock_service"
+				;;
+
+			esac    # --- end of case ---
+
+			if [[ -e "c_sock" ]]; then
+				# Socket path already exists
+				# Check for running instances
+				c_sock_pid="$(pgrep -f ${c_sock})"
+				c_sock_pid_cmd="$(ps -ho args ${c_sock_pid} | awk '{print $1}')"
+
+				if [ "${c_sock_pid_cmd}" -ne "${sock_serv}" ]; then
+					# Someone else is using the socket
+					"${c_type} in use by another process: ${c_sock_pid}"
+
+				elif [ -z "${c_sock_pid}" ]; then
+					# Abandoned socket, probaly killed
+					rm -rf "${c_sock}"
+					c_sock_arg="--${c_arg} ${c_sock} "
+				fi
+			else
+				# All is good
+				c_sock_arg=" --${c_arg} ${c_sock}"
+			fi
+			echo "${c_sock_arg}"
+
+		}    # ----------  end of function check_set_sock  ----------
+
+
+#===  FUNCTION  ================================================================
+#          NAME:  vde_init_args
+#   DESCRIPTION:  Validate and initialize VDE Arguments
+#    PARAMETERS: vde_type vde_group vde_pid vde_sock vde_mgmt vde_rc vde_tap vde_br 
+#       RETURNS:  VDE switch argument string
+#===============================================================================
+
+
+function vde_init_args ()
+{
+
+local func_name="vde_init_args"
+local valid_vde_types="vde\nslirp"
+local vde_rec_args=7
+local slirp_rec_args=3
+local rec_count=0
+local rec_count_core=0
+
+if [ -z "$(echo $1 | grep ${valid_vde_types})" ]; then
+	# Not a valid VDE Type
+	die "vde_init_args: Invalid type '${1}'\n${usage}"
+fi
+local vde_type="$1"
+shift 1
+
+while getops ":g:p:s:m:r:T:B:F:H:D:d:X:x:L:U:h:" $Option
+do
+
+case $Option in
+"g")
+	if [ -z "${vde_group}" ]; then
+	local vde_group="${OPTARG}"
+	rec_count_core=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"p")
+	if [ -z "$vde_pid" ]; then
+	local vde_pid="${OPTARG}"
+	rec_count_core="${rec_count}+1"
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"s")
+	if [ -z "$vde_sock" ]; then
+	local vde_sock="${OPTARG}"
+	rec_count_core=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+
+"m")
+	if [ -z "$vde_mgmt" ]; then
+	local vde_mgmt="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"r")
+	if [ -z "$vde_rc" ]; then
+	local vde_rc="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"T")
+	if [ -z "$vde_tap" ]; then
+	local vde_tap="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"B")
+	if [ -z "$vde_bridge" ]; then
+	local vde_bridge="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"F")
+	if [ -z "$slirp_tftp" ]; then
+	local slirp_tftp="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"H")
+	if [ -z "$slirp_host" ]; then
+	local c_sock="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"D")
+	if [ -z "$slirp_dhcp" ]; then
+	local slirp_dhcp="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"d")
+	if [ -z "$slirp_dns" ]; then
+	local slirp_dns="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"X")
+	if [ -z "$slirp_redir_X" ]; then
+	local slirp_redir_X="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"x")
+	if [ -z "$slirp_redir_sock" ]; then
+	local slirp_redir_sock="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"L")
+	if [ -z "$slirp_redir_tcp" ]; then
+	local slirp_redir_tcp="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+"U")
+	if [ -z "$slirp_redir_udp" ]; then
+	local slirp_redir_udp="${OPTARG}"
+	rec_count=${rec_count}+1
+	else
+	die "${func_name}: Multiple calls to same option: ${Option} ${OPTARG}"
+	fi
+;;
+
+*)
+	die "${func_name}: Invalid option\n${usage}"
+;;
+
+esac    # --- end of case ---
+done
+
+#-------------------------------------------------------------------------------
+#   Leave this case minimal for now, this function may change to Init VDE too
+#   This is the main workhorse case, all init-specific code should be in here
+#   While the more general socket init and such should remain outside
+#-------------------------------------------------------------------------------
+case $vde_type in
+"vde")
+if [ "(${rec_count_core} + ${rec_count} )" -lt "${vde_rec_args}" ]; then
+	die "${func_name}: Insufficient arguments\n${usage}"
+fi
+	vde_type="vde"
+if [[ $(check_iface ${vde_br}) && $(check_iface ${vde_tap}) ]]; then
+	# All good
+	init_args="${init_args} --tap ${vde_tap}"
+fi
+
+#-------------------------------------------------------------------------------
+#   Assume Valid RC Files
+#-------------------------------------------------------------------------------
+if [ -n "${vde_rc}" ]; then
+if [[ -e "${vde_rc}" ]]; then
+	init_args="${init_args} --rcfile ${vde_rc}"
+fi
+fi
+
+	local check_sock="$(check_set_sock ${vde_mgmt} ${vde_br} vde_mgmt )"
+if [ -n "${check_sock}" ]; then
+	init_args="${init_args} ${check_sock}"
+fi
+
+;;
+
+"slirp")
+if [ "(${rec_count_core} + ${rec_count} )" -lt "${slirp_rec_args}" ]; then
+	die "${func_name}: Insufficient arguments\n${usage}"
+fi
+	vde_type="slirp"
+
+
+         redir_debug="Redirecting TCP ports:\n"
+        for redir_tcp in $slirp_redir_tcp; do
+            init_args="-L ${redir_tcp} "
+            redir_debug="${redir_debug}${redir_tcp}\n"
+        done
+        if [ "debug" -ge "2" ]; then
+            echo "${redir_debug}"
+        fi
+
+         redir_debug="Redirecting UDP ports:\n"
+        for redir_udp in $slirp_redir_udp; do
+            init_args="-U ${redir_udp} "
+            redir_debug="${redir_debug}${redir_tcp}\n"
+        done
+        if [ "debug" -ge "2" ]; then
+            echo "${redir_debug}"
+        fi
+
+         redir_debug="Redirecting X displays:\n"
+        for redir_x in $slirp_redir_x; do
+            init_args="-X ${redir_} "
+            redir_debug="${redir_debug}${redir_tcp}\n"
+        done
+        if [ "debug" -ge "2" ]; then
+            echo "${redir_debug}"
+        fi
+
+         redir_debug="Redirecting Unix Sockets:\n"
+        for redir_socket in $slirp_redir_socket; do
+            init_args="-x ${redir_socket} "
+            redir_debug="${redir_debug}${redir_tcp}\n"
+        done
+        if [ "debug" -ge "2" ]; then
+            echo "${redir_debug}"
+        fi
+
+    if [ "$slirp_dhcp" -eq "1" ]; then
+            init_args="--dhcp  "
+            if [ "debug" -ge "2" ]; then
+                echo "Setting DHCP starting range to: Default"
+            fi
+    else
+        init_args=""
+        if [ "debug" -ge "2" ]; then
+            echo "Slirp DHCP not enabled"
+        fi
+    fi
+
+    if [ "$slirp_tftp" -ne "0" ]; then
+        slirp_tftp="--tftp ${slirp_tftp} "
+        if [ "debug" -ge "2" ]; then
+            echo "Slirp tftp server enabled for directory: ${slirp_tftp}"
+        fi
+    else
+        slirp_tftp=""
+        if [ "debug" -ge "2" ]; then
+            echo "Slirp tftp server not enabled"
+        fi
+    fi
+
+        init_args="--host ${slirp_host} "
+        if [ "debug" -ge "2" ]; then
+            echo "Slirp host address set to: ${slirp_host}"
+        fi
+
+        init_args="--dns $slirp_dns "
+        if [ "debug" -ge "2" ]; then
+            echo "Slirp DNS server/proxy set to: ${slirp_dns}"
+        fi
+
+
+
+;;
+
+"destroy")
+	vde_type="destroy"
+
+	#-------------------------------------------------------------------------------
+	#   not sure if I want to rename this function to be more inclusive, or not yet
+	#-------------------------------------------------------------------------------
+;;
+
+*)
+	die "vde_init_args: Invalid type ${vde_type}. ${valid_vde_types}" 
+;;
+
+esac    # --- end of case ---
+
+if [[ -n "$(grep ${2} /etc/group)" ]]; then
+	init_args="--group $2"
+else
+	die "vde_init_args: Invalid group ${3}"
+fi
+
+
+	local pid_test="$(check_set_pid_file ${vde_pid} ${vde_br} ${vde_type} )"
+if [ -n "${pid_test}" ]; then
+	init_args="${init_args} ${pid_test}"
+fi
+
+	local check_sock="$(check_set_sock ${vde_sock} ${vde_br} ${vde_type} )"
+if [ -n "${check_sock}" ]; then
+	init_args="${init_args} ${check_sock}"
+fi
+
+
+echo "${init_args}"
+
+
+}    # ----------  end of function vde_init_args  ----------
+
+
+#===  FUNCTION  ================================================================
+#          NAME:  bridge_mgmr
+#   DESCRIPTION:  Initialize Bridge, assume check_iface used to validate members
+#    PARAMETERS:  br_mode br_if br_slaves forwarding stp 
+#       RETURNS:  bool
+#===============================================================================
+
+
+function bridge_mgmr ()
+{
+
+local br_usage="Usage [ bridge_mgmr br_mode br_if br_slaves forwarding stp "
+if [ "$#" -ne "5" ]; then
+	die "bridge_mgmr: Invalid number of arguments. ${br_usage}";
+fi
+local br_mode="$1"
+local br_if="$2"
+local br_slaves="$3"
+
+case $4 in
+"yes|on")
+forwarding='1'
+;;
+
+"no|off")
+forwarding='0'
+;;
+
+*)
+die "bridge_mgmt: Invalid forwarding flag. Valid: 'yes|on' 'no|off'"
+;;
+
+esac    # --- end of case ---
+
+case $5 in
+"yes|on")
+stp='1'
+;;
+
+"no|off|vde")
+stp='0'
+;;
+
+*)
+	die "bridge_mgmt: Invalid stp flag. Valid 'yes|on' 'no|off|vde'"
+;;
+
+esac    # --- end of case ---
+
+
+case $br_mode in
+"init")
+
+        ## Set up Phy Bridge 
+        ip link add name ${br_if} type bridge
+
+        ## Enable set forward delay, and enable forwarding
+        echo  0 > /sys/devices/virtual/net/${br_if}/bridge/forward_delay
+        for f in /proc/sys/net/bridge/bridge-nf-*; do echo 0 > $f; done
+        /sbin/sysctl net.ipv4.conf.${br_if}.forwarding=${forwarding} >/dev/null 2>&1
+        /sbin/sysctl net.ipv6.conf.${br_if}.forwarding=${forwarding} >/dev/null 2>&1
+        if [ "$debug" -ge "2" ]; then
+                echo "Enabling IP Forwarding"
+        fi
+
+	#-------------------------------------------------------------------------------
+	#   Enable or Disable STP, Default should be disable(transparent bridge)
+	#-------------------------------------------------------------------------------
+        echo "${stp}" > /sys/devices/virtual/net/${br_interface}/bridge/stp_state
+        if [ "$debug" -ge "2" ]; then
+                echo "Disabling STP, Use VDE's FSTP capability VIA RCFile instead"
+        fi
+
+
+	#-------------------------------------------------------------------------------
+	#   This could probably be turned into a seperate function
+	#   Or a recursive call with the add_members flag set?
+	#-------------------------------------------------------------------------------
+	for members in $br_slaves ; do
+                ip link set ${members} promisc on
+                ip link set ${members} up
+                ip link set dev ${members} master ${br_if}
+	done
+
+;;
+
+"destroy")
+
+	for members in $br_slaves ; do
+                ip link set dev ${members} nomaster
+	done
+	ip link delete dev ${br_if}
+
+;;
+
+"add_member")
+
+	for members in $br_slaves ; do
+                ip link set ${members} promisc on
+                ip link set ${members} up
+                ip link set dev ${members} master ${br_if}
+	done
+;;
+
+"remove_member")
+	for members in $br_slaves ; do
+                ip link set dev ${members} nomaster
+	done
+;;
+
+*)
+	die "bridge_mgmt: Invalid br_mode. Valid: 'init' 'destroy' 'add_member' 'remove_member'"
+;;
+
+esac    # --- end of case ---
+
+}    # ----------  end of function bridge_init  ----------
+
+
+
+#===  FUNCTION  ================================================================
+#          NAME:  tap_init
+#   DESCRIPTION:  Initialize tap devices, assume check_iface validated input
+#    PARAMETERS:  c_tap tap_group 
+#       RETURNS:  bool
+#===============================================================================
+
+
+function tap_init ()
+{
+tap_init_useage="tap_init c_tap tap_group "
+if [ "$#" -ne "2" ]; then
+	die "tap_init: wrong number of arguments. ${tap_init_usage}"
+fi
+
+local c_tap="$1"
+local tap_group="$2"
+
+                ip tuntap add dev ${c_tap} mode tap group ${tap_group}
+                ip link set ${c_tap} promisc on
+                ip link set ${c_tap} up
+
+}    # ----------  end of function tap_init  ----------
+
+
+#===  FUNCTION  ================================================================
+#          NAME: slirp_args_init 
+#   DESCRIPTION: Initialize and validate slirp Arguments
+#    PARAMETERS:  
+#       RETURNS:  
+#===============================================================================
