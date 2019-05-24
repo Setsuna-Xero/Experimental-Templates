@@ -2,7 +2,12 @@
 
 netif_create() {
 
-	ip link add name $interface type bond
+		if [ -n "$policy" ]; then
+	ip link add $interface type bond mode ${policy} xmit_hash_policy layer2 lacp_rate 1 miimon 100
+		else
+			echo "policy required. Please use one of the following policies:"
+			echo "active-backup, balance-rr, balance-xor, balance-tlb, balance-alb, broadcast, 802.3ad"
+		fi
 }
 
 netif_destroy() {
@@ -31,12 +36,6 @@ netif_post_up() {
 			done
 		fi
 
-		if [ -n "$polic"]; then
-		 echo "${policy}" > /sys/class/net/${interface}/bonding
-		else
-			echo "policy required. Please use one of the following policies:"
-			echo "active-backup, balance-rr, balance-xor, balance-tlb, balance-alb, broadcast, 802.3ad"
-		fi
 }
 
 netif_pre_down() {
