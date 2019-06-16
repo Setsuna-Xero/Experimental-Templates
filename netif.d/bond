@@ -3,7 +3,10 @@
 netif_create() {
 
 		if [ -n "$policy" ]; then
+			if $policy = "802.ad"; then
 	ip link add $interface type bond mode ${policy} xmit_hash_policy layer2 lacp_rate 1 miimon 100
+			else
+	ip link add $interface type bond mode ${policy}
 		else
 			echo "policy required. Please use one of the following policies:"
 			echo "active-backup, balance-rr, balance-xor, balance-tlb, balance-alb, broadcast, 802.3ad"
@@ -31,7 +34,7 @@ netif_post_up() {
     local bcast
      if [ -n "$slaves" ]; then
          for slave in ${slaves//netif./}; do
-
+        ip link set ${slave} down
         ip link set ${slave} master ${interface}
 			done
 		fi
@@ -44,6 +47,7 @@ netif_pre_down() {
      if [ -n "$slaves" ]; then
          for slave in ${slaves//netif./}; do
         ip link set ${slave} nomaster
+		ip link set ${slave} down
 			done
 		fi
 }
